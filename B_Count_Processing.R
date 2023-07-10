@@ -127,5 +127,5 @@ plot(mgrid)
 
 writeRaster(mgrid, paste0(output_path, "building_count_v2.tif"), overwrite = T)
 
-###############End of script#################################################
+###############End of script##################################################
 
