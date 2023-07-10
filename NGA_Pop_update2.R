@@ -100,5 +100,5 @@ plot(mgrid)
 
 writeRaster(mgrid, paste0(output_path, "NGA_Gridded_Pop_v2.tif"), overwrite = T)
 
-###############End of script#################################################
+###############End of script##################################################
 
