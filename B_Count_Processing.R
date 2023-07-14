@@ -8,14 +8,15 @@ library(feather)
 
 #Specify Drive Path
 drive_path <- "//worldpop.files.soton.ac.uk/worldpop/Projects/WP517763_GRID3/Working/NGA/Ortis/"
-input_path <- paste0(drive_path, "Data/")
+footprint_path <- paste0(drive_path, "AFRICA_NIGERIA_building_year2-001/")
+mgrid_path <- paste0(drive_path, "Data/")
 output_path <- paste0(drive_path, "NGA_buidlings_v2/")
 
 
 # Load dataset ------------------------------------------------------------
 
 #read mastergrid
-mgrid <- rast(paste0(input_path, "Grid_ID.tif"))
+mgrid <- rast(paste0(mgrid_path, "Grid_ID.tif"))
 
 #get pixel values and see if there are NAs in the grid cell ids
 mgrid_id <- terra::values(mgrid, dataframe = T) 
@@ -29,11 +30,31 @@ any(duplicated(mgrid_id))
 #Remove mgrid_id
 rm(mgrid_id); gc()
 
-#Load footprint polygons in geodatabase
+#Load footprint shapefiles and rbind them all as one dataset
+
+#specify pattern for file names
+pattern = "year2.*\\.shp$"
+
+#list all files that match the pattern
+all_files <-dir(footprint_path,pattern=pattern)
+all_files
+
+# Remove 3 files labeled year2_deleted
+myfiles <- all_files[!grepl("year2_deleted\\.shp$", all_files)]
+myfiles
+
+#read files and rbind them
 
 tic()
-B_footprint <- st_read(paste0(input_path, dsn = "NGA.gdb"), layer = "Builiding_Footprint_v2")  
-toc()
+
+B_footprint <- myfiles %>% 
+  map(function(x) st_read(file.path(footprint_path, x))) %>% 
+  map(~ st_transform(., st_crs(mgrid))) %>%  # Project each dataset to the same CRS as mgrid
+  map(~ select(., geometry)) %>%         #Select only geometry to reduce data size
+  reduce(rbind) 
+
+toc() #takes 3hrs to read-in data
+
 
 #Create a grouping variable for subsetting data in chunks
 B_count_df <- B_footprint %>% 
@@ -49,7 +70,7 @@ B_count_df <- B_count_df %>%
 
 # Script for processing footprint -----------------------------------------
 
-tic()
+tic() 
 
 # Function to process the footprint
 
@@ -76,10 +97,9 @@ for(dd in B_count_df){
   
 } 
 
-toc()
+toc() #Takes 16 hours to process
 
 rm(B_count_df,  centroid, centroid_point, dd, values); gc()
-
 
 
 # Read files back to memory -----------------------------------------------
@@ -117,15 +137,17 @@ mgrid_id <- mgrid_id %>%
   full_join(B_count, by = "Grid_ID")
 
 #Read mastergrid again
-mgrid <- rast(paste0(input_path, "Grid_ID.tif"))
+mgrid <- rast(paste0(mgrid_path, "Grid_ID.tif"))
 
 #Assign predictions to Grid Raster
 
 mgrid[]<- mgrid_id$count
 
+
 plot(mgrid)
 
-writeRaster(mgrid, paste0(output_path, "building_count_v2.tif"), overwrite = T)
+writeRaster(mgrid, paste0(output_path, "NGA_building_count_v2.tif"), 
+            overwrite = T, names = "NGA_buildings_v2_count")
 
 ###############End of script##################################################
 
