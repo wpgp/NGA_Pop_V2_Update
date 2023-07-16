@@ -68,7 +68,7 @@ B_count_df <- B_count_df %>%
   group_split(Group_ID)
 
 
-# Script for processing footprint -----------------------------------------
+# Script for processing only year2 footprint -----------------------------------------
 
 tic() 
 
@@ -101,8 +101,81 @@ toc() #Takes 16 hours to process
 
 rm(B_count_df,  centroid, centroid_point, dd, values); gc()
 
+#########################################################################################
+########################################################################################
 
-# Read files back to memory -----------------------------------------------
+# Read only year 1 files and process them ---------------------------------
+
+#specify pattern for file names
+pattern = "year1.*\\.shp$"
+
+#list all files that match the pattern
+myfiles <-dir(footprint_path,pattern=pattern)
+myfiles
+
+
+#read files and rbind them
+
+tic()
+
+B_footprint <- myfiles %>% 
+  map(function(x) st_read(file.path(footprint_path, x))) %>% 
+  map(~ st_transform(., st_crs(mgrid))) %>%  # Project each dataset to the same CRS as mgrid
+  map(~ select(., geometry)) %>%         #Select only geometry to reduce data size
+  reduce(rbind) 
+
+toc() #takes 10min to read-in data
+
+
+#Create a grouping variable for subsetting data in chunks
+B_count_df <- B_footprint %>% 
+  group(n = 2000000, method = "greedy", col_name = "Group_ID") %>% 
+  ungroup() 
+
+rm(B_footprint); gc()
+
+# split the data into chunks based on the Group_ID
+B_count_df <- B_count_df %>% 
+  group_split(Group_ID)
+
+
+# Script for processing only year1
+
+tic() 
+
+# Function to process the footprint
+
+for(dd in B_count_df){
+  # get the ID of the current chunk being processed
+  typro <- unique(dd$Group_ID)
+  print(typro)
+  
+  #correct invalid geometries
+  dd <- st_make_valid(dd)
+  
+  # Calculate the centroid of the polygon
+  centroid <- st_centroid(dd)
+  
+  # Convert the centroid to a point
+  centroid_point <- st_cast(centroid, "POINT")
+  
+  # Extract values from raster under each point to get grid_id
+  values <- terra::extract(mgrid, centroid_point) 
+  
+  #Write each group to file
+  
+  write_feather(values, paste0(output_path, "Year_", unique(dd$Group_ID), ".feather"))
+  
+} 
+
+toc() #Takes 48min to process
+
+rm(B_count_df,  centroid, centroid_point, dd, values); gc()
+
+#################################################################################
+#################################################################################
+
+# Read all files back to memory -----------------------------------------------
 
 
 #Read all files back to memory and rbind them
